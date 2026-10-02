@@ -40,4 +40,5 @@ Currently in development.
 
 ## Developer
 
-Emediong O. Michael
+Emediong Michael Obong
+
