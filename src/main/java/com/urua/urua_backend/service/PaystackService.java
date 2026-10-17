@@ -17,7 +17,7 @@ import java.util.Map;
 @Service
 public class PaystackService {
 
-    public record PaymentVerification(boolean success, long amountKobo) {}
+    public record PaymentVerification(boolean success, long amountKobo, String status) {}
 
     private static final ParameterizedTypeReference<Map<String, Object>> MAP_TYPE =
             new ParameterizedTypeReference<>() {};
@@ -72,9 +72,10 @@ public class PaystackService {
                     .body(MAP_TYPE);
 
             Map<?, ?> data = (Map<?, ?>) response.get("data");
-            boolean success = "success".equals(data.get("status"));
+            String status = String.valueOf(data.get("status"));
+            boolean success = "success".equals(status);
             long amountKobo = ((Number) data.get("amount")).longValue();
-            return new PaymentVerification(success, amountKobo);
+            return new PaymentVerification(success, amountKobo, status);
         } catch (RestClientException | NullPointerException | ClassCastException e) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not verify payment. Please try again.");
         }
