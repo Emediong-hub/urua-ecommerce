@@ -20,6 +20,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final EmailVerificationService emailVerificationService;
 
     public UserResponse register(RegisterRequest request) {
         // Nobody can make themselves an admin through public registration
@@ -40,9 +41,13 @@ public class AuthService {
                 .password(passwordEncoder.encode(request.getPassword()))
                 .role(request.getRole())
                 .verified(false)
+                .emailVerified(false)
                 .build();
 
-        return toResponse(userRepository.save(user));
+        User saved = userRepository.save(user);
+        emailVerificationService.sendVerification(saved);
+
+        return toResponse(saved);
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -56,8 +61,21 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
         }
 
+        if (!user.isEmailVerified()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Please verify your email before logging in. Check your inbox, or request a new link.");
+        }
+
         String token = jwtService.generateToken(user);
         return new AuthResponse(token, toResponse(user));
+    }
+
+    public void verifyEmail(String token) {
+        emailVerificationService.verify(token);
+    }
+
+    public void resendVerification(String email) {
+        emailVerificationService.resend(email);
     }
 
     private UserResponse toResponse(User user) {

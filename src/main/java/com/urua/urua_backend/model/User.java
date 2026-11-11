@@ -34,6 +34,17 @@ public class User {
     // Sellers must be verified before they can list products (this is our trust feature)
     private boolean verified;
 
+    // True once the user has clicked the link in their verification email
+    private boolean emailVerified;
+
+    // Only a hash of the emailed token is stored, like a password
+    @Indexed
+    private String verificationTokenHash;
+
+    private Instant verificationExpiresAt;
+
+    private Instant verificationSentAt;
+
     @Builder.Default
     private Instant createdAt = Instant.now();
 }

@@ -38,6 +38,9 @@ class AuthServiceTest {
     @Mock
     private JwtService jwtService;
 
+    @Mock
+    private EmailVerificationService emailVerificationService;
+
     @InjectMocks
     private AuthService authService;
 
@@ -58,18 +61,19 @@ class AuthServiceTest {
         return request;
     }
 
-    private User savedUser() {
+    private User savedUser(boolean emailVerified) {
         return User.builder()
                 .id("u1")
                 .fullName("Test Buyer")
                 .email("buyer@test.com")
                 .password("hashed")
                 .role(Role.BUYER)
+                .emailVerified(emailVerified)
                 .build();
     }
 
     @Test
-    void register_savesUserWithHashedPassword_andLowercaseEmail() {
+    void register_savesUnverifiedUserWithHashedPassword_andSendsTheVerificationEmail() {
         when(userRepository.existsByEmail("buyer@test.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hashed");
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
@@ -84,9 +88,11 @@ class AuthServiceTest {
         verify(userRepository).save(captor.capture());
 
         assertEquals("hashed", captor.getValue().getPassword());
+        assertFalse(captor.getValue().isEmailVerified());
         assertEquals("buyer@test.com", response.getEmail());
         assertEquals(Role.BUYER, response.getRole());
         assertFalse(response.isVerified());
+        verify(emailVerificationService).sendVerification(any(User.class));
     }
 
     @Test
@@ -98,6 +104,7 @@ class AuthServiceTest {
 
         assertEquals(409, ex.getStatusCode().value());
         verify(userRepository, never()).save(any(User.class));
+        verify(emailVerificationService, never()).sendVerification(any(User.class));
     }
 
     @Test
@@ -107,11 +114,12 @@ class AuthServiceTest {
 
         assertEquals(400, ex.getStatusCode().value());
         verify(userRepository, never()).save(any(User.class));
+        verify(emailVerificationService, never()).sendVerification(any(User.class));
     }
 
     @Test
-    void login_wrongPassword_isRejectedWith401() {
-        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(savedUser()));
+    void login_wrongPassword_isRejectedWith401_beforeTheVerificationCheck() {
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(savedUser(false)));
         when(passwordEncoder.matches("wrong", "hashed")).thenReturn(false);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
@@ -132,8 +140,20 @@ class AuthServiceTest {
     }
 
     @Test
-    void login_correctPassword_returnsATokenAndTheUser() {
-        User user = savedUser();
+    void login_unverifiedEmail_isRejectedWith403_evenWithTheCorrectPassword() {
+        when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(savedUser(false)));
+        when(passwordEncoder.matches("password123", "hashed")).thenReturn(true);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> authService.login(loginRequest("password123")));
+
+        assertEquals(403, ex.getStatusCode().value());
+        verify(jwtService, never()).generateToken(any(User.class));
+    }
+
+    @Test
+    void login_verifiedUserWithCorrectPassword_returnsATokenAndTheUser() {
+        User user = savedUser(true);
         when(userRepository.findByEmail("buyer@test.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("password123", "hashed")).thenReturn(true);
         when(jwtService.generateToken(user)).thenReturn("token123");
